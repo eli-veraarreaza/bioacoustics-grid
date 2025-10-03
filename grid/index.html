@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Chucao — Grilla de 20 visualizaciones</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+    header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
+    .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .meta { font-size: 12px; color:#444; margin: 6px 0 10px; line-height:1.3; }
+    .meta a { color: inherit; text-decoration: underline; }
+    .wave { height: 72px; }
+    .spec { height: 160px; margin-top: 8px; }
+    .controls { display:flex; gap:8px; align-items:center; margin-top:8px; }
+    button { padding: 6px 10px; border-radius: 8px; border:1px solid #ddd; cursor:pointer; background:#fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 style="margin:0">Chucao Tapaculo — 20 audios</h1>
+    <button id="reload">Recargar aleatorios</button>
+  </header>
+
+  <div id="grid" class="grid" aria-live="polite"></div>
+
+  <script type="module">
+    import WaveSurfer from "https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.esm.js";
+    import Spectrogram from "https://unpkg.com/wavesurfer.js@7/dist/plugins/spectrogram.esm.js";
+
+    const API_BASE = "https://xeno-canto.org/api/2/recordings";
+    const SPECIES_QUERY = "gen:Scelorchilus sp:rubecula"; // Chucao
+
+    // Si usas proxy (recomendado por CORS), deja esto en true
+    const USE_PROXY = true;
+    const proxy = (url) => `/.netlify/functions/proxy?url=${encodeURIComponent(url)}`;
+
+    async function fetchRecordings(limit = 20) {
+      // Trae las primeras páginas hasta juntar 'limit'
+      const out = [];
+      let page = 1, numPages = 1;
+      while (out.length < limit && page <= numPages) {
+        const res = await fetch(`${API_BASE}?query=${encodeURIComponent(SPECIES_QUERY)}&page=${page}`);
+        const data = await res.json();
+        numPages = parseInt(data.numPages || 1, 10);
+        for (const r of (data.recordings || [])) {
+          if (r.file) out.push(r);
+          if (out.length >= limit) break;
+        }
+        page++;
+      }
+      // Barajar para variar resultados
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1)); [out[i], out[j]] = [out[j], out[i]];
+      }
+      return out.slice(0, limit);
+    }
+
+    function cardTemplate(rec) {
+      const title = `${rec.en || ""} (${rec.gen || ""} ${rec.sp || ""})`.trim();
+      const who = rec.rec ? `• Rec: ${rec.rec}` : "";
+      const where = rec.loc ? `• ${rec.loc}` : "";
+      const when = rec.date ? `• ${rec.date}` : "";
+      const qual = rec.q ? `• q:${rec.q}` : "";
+      const licLink = rec.lic ? `<a href="${rec.lic}" target="_blank" rel="noopener">Licencia</a>` : "";
+      const recLink = rec.url ? `<a href="${rec.url}" target="_blank" rel="noopener">XC ${rec.id || ""}</a>` : "";
+
+      const id = `xc_${rec.id || Math.random().toString(36).slice(2)}`;
+      return `
+        <div class="card" data-id="${id}" data-src="${rec.file}">
+          <div class="meta"><strong>${title}</strong><br>${[who, where, when, qual, recLink, licLink].filter(Boolean).join(" • ")}</div>
+          <div id="${id}-wave" class="wave"></div>
+          <div id="${id}-spec" class="spec"></div>
+          <div class="controls">
+            <button data-btn="play">Play/Pausa</button>
+            <span data-el="status" aria-live="polite"></span>
+          </div>
+        </div>
+      `;
+    }
+
+    function lazyInit(gridEl) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            initPlayer(entry.target);
+            io.unobserve(entry.target);
+          }
+        });
+      }, { rootMargin: "200px 0px" });
+      gridEl.querySelectorAll(".card").forEach(c => io.observe(c));
+    }
+
+    async function initPlayer(card) {
+      const src = card.dataset.src;
+      const id = card.dataset.id;
+      const waveEl = card.querySelector(`#${id}-wave`);
+      const specEl = card.querySelector(`#${id}-spec`);
+      const statusEl = card.querySelector('[data-el="status"]');
+      const btn = card.querySelector('[data-btn="play"]');
+
+      const url = USE_PROXY ? proxy(src) : src;
+
+      const ws = WaveSurfer.create({
+        container: waveEl,
+        height: 72,
+        waveColor: "#bbb",
+        progressColor: "#555",
+        cursorColor: "#999",
+        interact: true,
+        autoplay: false,
+      });
+      const spectro = Spectrogram.create({ wavesurfer: ws, container: specEl, height: 160, labels: true });
+
+      ws.on("ready", () => { statusEl.textContent = "Listo"; });
+      ws.on("play",  () => { statusEl.textContent = "Reproduciendo…"; });
+      ws.on("pause", () => { statusEl.textContent = "Pausa"; });
+
+      btn.addEventListener("click", () => ws.isPlaying() ? ws.pause() : ws.play());
+      // Importante para CORS/WebAudio
+      ws.setOptions({ backend: "WebAudio", mediaControls: false });
+      ws.load(url);
+    }
+
+    async function main() {
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "Cargando grabaciones…";
+      const recs = await fetchRecordings(20);
+      grid.innerHTML = recs.map(cardTemplate).join("");
+      lazyInit(grid);
+    }
+
+    document.getElementById("reload").addEventListener("click", main);
+    main();
+  </script>
+</body>
+</html>
