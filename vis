@@ -1,8 +1,0 @@
-grid/vis/
-  url_args.js          ← (tu archivo)
-  log.js               ← (del visualizador)
-  error.js             ← (del visualizador)
-  3p/dat.gui.js        ← (del visualizador)  *opcional; url_args.js lo carga si existe
-  audio/               ← (carpeta completa con controller.js y lo que importe)
-  shaders/             ← (si existe en tu proyecto)
-  styles.css           ← (opcional; solo si lo requiere tu motor)
