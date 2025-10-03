@@ -3,4 +3,4 @@
   node_bundler = "esbuild"
 
 [build]
-  publish = "."
+  publish = "grid"
