@@ -1,3 +1,8 @@
+// Hack para grid: si no existe dat.GUI, definimos un dummy
+if (typeof dat === "undefined") {
+  window.dat = { GUI: function() { this.add = () => {}; } };
+}
+
 let q_args = new URLSearchParams(location.search);
 let args_info = [];
 let gui = window.dat && new dat.GUI({ autoPlace: true });
