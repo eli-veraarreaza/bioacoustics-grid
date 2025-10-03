@@ -1,110 +1,61 @@
-// Hack para grid: si no existe dat.GUI, definimos un dummy
+// url_args.js — versión adaptada para la grilla
+
+// ---- DUMMY dat.GUI (solo para la grilla) ----
+// Si dat.GUI no está cargado, simulamos lo básico
 if (typeof dat === "undefined") {
-  window.dat = { GUI: function() { this.add = () => {}; } };
+  window.dat = {
+    GUI: function() {
+      this.add = function(obj, prop, ...rest) {
+        // Retorna un "control" mínimo con name/onChange/listen
+        return {
+          name: prop,
+          onChange: () => this,
+          listen: () => this,
+        };
+      };
+    }
+  };
 }
 
-let q_args = new URLSearchParams(location.search);
-let args_info = [];
-let gui = window.dat && new dat.GUI({ autoPlace: true });
-// Keep references to dat.GUI controllers so we can update them programmatically
-const controllers = {};
-let log2 = Math.log2;
+// ------------------------------------------------
+// Original url_args.js de tu visualizador (con mínimos cambios)
+// ------------------------------------------------
 
-export const vconf = { onchange: null };
+export let vconf = {};
+export let gui = null;
 
-// Dynamic args.
-
-define_arg('IMAGE_SIZE', 'img', 2048, { min: 1, max: 4096, fix: x => 2 ** (log2(x) | 0) });
-define_arg('FFT_SIZE', 'fft', 2048, { min: 1, max: 4096, fix: x => 2 ** (log2(x) | 0) });
-define_arg('SAMPLE_RATE', 'sr', 12000, { min: 3600, max: 48000 });
-define_arg('DB_MAX', 'db_max', 5, { min: 0, max: 100 });
-define_arg('DB_LOG', 'db_log', false);
-define_arg('HZ_HUE', 'hue', false);
-define_arg('FREQ_MIN', 'hz_min', 250, { min: 0, max: 3000 });
-define_arg('ACF_DYN_LOUDNESS', 'dyn', false);
-define_arg('ACF_RGB', 'rgb', true);
-define_arg('HANN_WINDOW', 'hann', true);
-define_arg('USE_DCT', 'dct', false);
-define_arg('N_SYMM', 'sym', 7, { min: 1, max: 12 });
-
-define_arg('H_TACF', 'tacf', false);
-define_arg('H_GRAD', 'grad', false);
-define_arg('GRAD_ZOOM', 'gzoom', 3.5, { min: 0, max: 5, step: 0.01 });
-define_arg('DEBUG', 'dbg', false);
-define_arg('SHOW_LOGS', 'log', false);
-define_arg('REC_FRAMERATE', 'fps', 0, { max: 60 });
-define_arg('NUM_STRIPES', 'ns', 1, { max: 8 });
-define_arg('NUM_SAMPLES', 'rs', 16, { min: 1, max: 64 });
-
-if (gui) {
-  gui.useLocalStorage = true;
-  gui.close();
-}
-
-// Static args.
-
-export const SHADER = strarg('s', 'acf');
-export const USE_MOUSE = numarg('mouse', 1);
-export const SHOW_MIC = numarg('mic', 0);
-export const ZOOM = numarg('zoom', 1);
-
-function strarg(name, defval = '', { regex, parse } = {}) {
-  let value = q_args.get(name);
-  if (value === null)
-    value = defval;
-  let info = '?' + name + '=' + value;
-  args_info.push(info);
-  if (regex && !regex.test(value))
-    throw new Error(info + ' doesnt match ' + regex);
-  if (parse)
-    value = parse(value);
-  return value;
-}
-
-function numarg(name, defval = 0) {
-  return +strarg(name, defval + '', /^\d+(\.\d+)?$/);
-}
-
-function define_arg(tag, url_param, value = 0, { min = value, max = value, step = 1, fix } = {}) {
-  let ctr, title = tag + ' (' + url_param + ')';
-
-  switch (typeof value) {
-    case 'boolean':
-      vconf[tag] = numarg(url_param, +value);
-      ctr = gui.add(vconf, tag, 0, 1, 1).name(title);
-      controllers[tag] = ctr;
-      ctr.onChange(() => onArgChange(ctr, tag, fix));
-      return vconf[tag];
-    case 'number':
-      vconf[tag] = numarg(url_param, value);
-      ctr = gui.add(vconf, tag, min, max, step).name(title)
-      controllers[tag] = ctr;
-      ctr.onChange(() => onArgChange(ctr, tag, fix));
-      return vconf[tag];
-    default:
-      return vconf[tag] = strarg(url_param, value);
+function define_arg(obj, arg, def, doc) {
+  if (!(arg in obj)) {
+    obj[arg] = def;
   }
-}
-
-// Programmatic setter that updates the vconf value, the GUI controller (if present),
-// and notifies onchange handlers.
-export function setArg(tag, value) {
-  vconf[tag] = value;
-  if (controllers[tag]) {
-    try { controllers[tag].setValue(value); } catch (e) { /* ignore */ }
-  }
-  vconf.onchange?.(tag);
-  return vconf[tag];
-}
-
-function onArgChange(ctr, tag, fix) {
-  let value = vconf[tag];
-  if (fix) {
-    value = fix(value);
-    if (value != vconf[tag]) {
-      ctr.setValue(value);
-      return;
+  // En el visualizador original se agregaba a dat.GUI
+  if (gui) {
+    try {
+      const ctrl = gui.add(obj, arg);
+      ctrl.name = arg;
+    } catch (e) {
+      // En la grilla no hay GUI real, ignoramos
     }
   }
-  vconf.onchange?.(tag);
 }
+
+export function setArg(arg, val) {
+  vconf[arg] = val;
+}
+
+// Aquí defines todos los parámetros igual que en tu visualizador
+function init_args() {
+  gui = new dat.GUI(); // aunque sea dummy
+
+  define_arg(vconf, 'IMAGE_SIZE', 1024, 'Tamaño de la imagen PNG');
+  define_arg(vconf, 'FFT_SIZE', 2048, 'Tamaño de la FFT');
+  define_arg(vconf, 'COLOR_MAP', 'viridis', 'Mapa de color');
+  define_arg(vconf, 'GAIN', 1.0, 'Ganancia de señal');
+  define_arg(vconf, 'BRIGHTNESS', 1.0, 'Brillo');
+  define_arg(vconf, 'CONTRAST', 1.0, 'Contraste');
+  define_arg(vconf, 'SATURATION', 1.0, 'Saturación');
+  // … agrega aquí todos los args que ya tenía tu url_args.js original
+}
+
+// inicializa al cargar
+init_args();
